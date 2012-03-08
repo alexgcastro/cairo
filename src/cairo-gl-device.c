@@ -149,6 +149,8 @@ _gl_destroy (void *device)
 
     cairo_region_destroy (ctx->clip_region);
 
+    _cairo_clip_destroy (ctx->clip);
+
     free (ctx->vb_mem);
 
     ctx->destroy (ctx);

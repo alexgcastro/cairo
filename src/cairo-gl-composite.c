@@ -538,7 +538,8 @@ _disable_stencil_buffer (void)
 static cairo_int_status_t
 _cairo_gl_composite_setup_painted_clipping (cairo_gl_composite_t *setup,
 					    cairo_gl_context_t *ctx,
-					    int vertex_size)
+					    int vertex_size,
+					    cairo_bool_t equal_clip)
 {
     cairo_int_status_t status = CAIRO_INT_STATUS_SUCCESS;
 
@@ -565,30 +566,32 @@ _cairo_gl_composite_setup_painted_clipping (cairo_gl_composite_t *setup,
 	ctx->states_cache.depth_mask = TRUE;
     }
     glEnable (GL_STENCIL_TEST);
-    glClearStencil (0);
-    glClear (GL_STENCIL_BUFFER_BIT);
-    glStencilOp (GL_REPLACE, GL_REPLACE, GL_REPLACE);
-    glStencilFunc (GL_EQUAL, 1, 0xffffffff);
-    glColorMask (0, 0, 0, 0);
+    if (! equal_clip ) {
+	glClearStencil (0);
+	glClear (GL_STENCIL_BUFFER_BIT);
+	glStencilOp (GL_REPLACE, GL_REPLACE, GL_REPLACE);
+	glStencilFunc (GL_EQUAL, 1, 0xffffffff);
+	glColorMask (0, 0, 0, 0);
 
-    _cairo_traps_init (&traps);
-    status = _cairo_gl_msaa_compositor_draw_clip (ctx, setup, clip, &traps);
-    _cairo_traps_fini (&traps);
+	_cairo_traps_init (&traps);
+	status = _cairo_gl_msaa_compositor_draw_clip (ctx, setup, clip, &traps);
+	_cairo_traps_fini (&traps);
 
-    if (unlikely (status)) {
+	if (unlikely (status)) {
+	    glColorMask (1, 1, 1, 1);
+	    goto disable_stencil_buffer_and_return;
+	}
+
+    /* We want to only render to the stencil buffer, so draw
+	   everything now. Flushing also unbinds the VBO, which we
+	   want to rebind for regular drawing. */
+	_cairo_gl_composite_flush (ctx);
+	_cairo_gl_composite_setup_vbo (ctx, vertex_size);
+
 	glColorMask (1, 1, 1, 1);
-	goto disable_stencil_buffer_and_return;
+	glStencilOp (GL_KEEP, GL_KEEP, GL_KEEP);
+	glStencilFunc (GL_EQUAL, 1, 0xffffffff);
     }
-
-    /* We want to only render to the stencil buffer, so draw everything now.
-       Flushing also unbinds the VBO, which we want to rebind for regular
-       drawing. */
-    _cairo_gl_composite_flush (ctx);
-    _cairo_gl_composite_setup_vbo (ctx, vertex_size);
-
-    glColorMask (1, 1, 1, 1);
-    glStencilOp (GL_KEEP, GL_KEEP, GL_KEEP);
-    glStencilFunc (GL_EQUAL, 1, 0xffffffff);
     return CAIRO_INT_STATUS_SUCCESS;
 
 disable_stencil_buffer_and_return:
@@ -601,18 +604,22 @@ _cairo_gl_composite_setup_clipping (cairo_gl_composite_t *setup,
 				    cairo_gl_context_t *ctx,
 				    int vertex_size)
 {
+    cairo_bool_t same_clip = _cairo_clip_equal (ctx->clip, setup->clip);
 
     if (! _cairo_gl_context_is_flushed (ctx) &&
 	(! cairo_region_equal (ctx->clip_region, setup->clip_region) ||
-	 ! _cairo_clip_equal (ctx->clip, setup->clip)))
+	 ! same_clip))
 	_cairo_gl_composite_flush (ctx);
 
     cairo_region_destroy (ctx->clip_region);
     ctx->clip_region = cairo_region_reference (setup->clip_region);
-    _cairo_clip_destroy (ctx->clip);
-    ctx->clip = _cairo_clip_copy (setup->clip);
 
     assert (!setup->clip_region || !setup->clip);
+
+    if (! same_clip && setup->clip) {
+	_cairo_clip_destroy (ctx->clip);
+	ctx->clip = _cairo_clip_copy (setup->clip);
+    }
 
     if (ctx->clip_region) {
 	_disable_stencil_buffer ();
@@ -620,9 +627,10 @@ _cairo_gl_composite_setup_clipping (cairo_gl_composite_t *setup,
 	return CAIRO_INT_STATUS_SUCCESS;
     }
 
-    if (ctx->clip)
-	return _cairo_gl_composite_setup_painted_clipping (setup, ctx,
-							   vertex_size);
+    if (setup->clip)
+	    return _cairo_gl_composite_setup_painted_clipping (setup, ctx,
+                                                           vertex_size,
+                                                           same_clip);
 
     _disable_stencil_buffer ();
     glDisable (GL_SCISSOR_TEST);

@@ -306,8 +306,6 @@ _cairo_gl_msaa_compositor_mask_source_operator (const cairo_compositor_t *compos
     if (unlikely (status))
 	goto finish;
 
-    _cairo_gl_composite_set_clip (&setup, composite->clip);
-
     status = _cairo_gl_composite_begin_multisample (&setup, &ctx, TRUE);
     if (unlikely (status))
 	goto finish;
@@ -345,7 +343,6 @@ _cairo_gl_msaa_compositor_mask_source_operator (const cairo_compositor_t *compos
     if (unlikely (status))
 	goto finish;
 
-    _cairo_gl_composite_set_clip (&setup, composite->clip);
     /* We always use multisampling here, because we do not yet have the smarts
        to calculate when the clip or the source requires it. */
     status = _cairo_gl_composite_begin_multisample (&setup, &ctx, TRUE);
@@ -450,8 +447,6 @@ _cairo_gl_msaa_compositor_mask (const cairo_compositor_t	*compositor,
     if (unlikely (status))
 	goto finish;
 
-    _cairo_gl_msaa_compositor_set_clip (composite, &setup);
-
     /* We always use multisampling here, because we do not yet have the smarts
        to calculate when the clip or the source requires it. */
     status = _cairo_gl_composite_begin_multisample (&setup, &ctx, TRUE);
@@ -543,6 +538,11 @@ _prevent_overlapping_drawing (cairo_gl_context_t *ctx,
        be drawn there until the stencil buffer is reset or the stencil test
        is disabled. */
     glStencilOp (GL_ZERO, GL_ZERO, GL_ZERO);
+
+    /* we need to clean up clip cache */
+    _cairo_clip_destroy (ctx->clip);
+    ctx->clip = NULL;
+
     return CAIRO_INT_STATUS_SUCCESS;
 }
 
