@@ -687,6 +687,56 @@ finish:
 }
 
 static cairo_int_status_t
+_cairo_gl_msaa_compositor_fill_rectilinear (const cairo_compositor_t *compositor,
+					    cairo_composite_rectangles_t *composite,
+					    const cairo_path_fixed_t *path,
+					    cairo_fill_rule_t fill_rule,
+					    double tolerance,
+					    cairo_antialias_t antialias,
+					    cairo_clip_t *clip)
+{
+    cairo_gl_composite_t setup;
+    cairo_gl_surface_t *dst = (cairo_gl_surface_t *) composite->surface;
+    cairo_gl_context_t *ctx = NULL;
+    cairo_int_status_t status;
+    int i;
+
+    status = _cairo_gl_composite_init (&setup,
+				       composite->op,
+				       dst,
+				       FALSE /* assume_component_alpha */);
+    if (unlikely (status))
+	goto cleanup_setup;
+
+    status = _cairo_gl_composite_set_source (&setup,
+					     &composite->source_pattern.base,
+					     &composite->source_sample_area,
+					     &composite->bounded);
+    if (unlikely (status))
+	goto cleanup_setup;
+
+    status = _cairo_gl_composite_begin_multisample (&setup, &ctx,
+	antialias != CAIRO_ANTIALIAS_NONE);
+    if (unlikely (status))
+	goto cleanup_setup;
+
+    for (i = 0; i < clip->num_boxes; i++) {
+	status = _cairo_gl_msaa_compositor_draw_quad (ctx, &setup,
+						      &clip->boxes[i]);
+	if (unlikely (status))
+	    goto cleanup_setup;
+    }
+
+cleanup_setup:
+    _cairo_gl_composite_fini (&setup);
+
+    if (ctx)
+	status = _cairo_gl_context_release (ctx, status);
+
+    return status;
+}
+
+static cairo_int_status_t
 _cairo_gl_msaa_compositor_fill (const cairo_compositor_t	*compositor,
 				cairo_composite_rectangles_t	*composite,
 				const cairo_path_fixed_t	*path,
@@ -697,8 +747,10 @@ _cairo_gl_msaa_compositor_fill (const cairo_compositor_t	*compositor,
     cairo_gl_composite_t setup;
     cairo_gl_surface_t *dst = (cairo_gl_surface_t *) composite->surface;
     cairo_gl_context_t *ctx = NULL;
-    cairo_int_status_t status;
+    cairo_int_status_t status = CAIRO_INT_STATUS_SUCCESS;
     cairo_traps_t traps;
+    cairo_bool_t set_clip = TRUE;
+    cairo_rectangle_int_t path_extents;
 
     if (should_fall_back (dst, antialias))
 	return CAIRO_INT_STATUS_UNSUPPORTED;
@@ -724,6 +776,45 @@ _cairo_gl_msaa_compositor_fill (const cairo_compositor_t	*compositor,
 	return _paint_back_unbounded_surface (compositor, composite, surface);
     }
 
+    if (_cairo_path_fixed_fill_is_rectilinear (path) &&
+	composite->clip != NULL &&
+	composite->clip->num_boxes == 1 &&
+	composite->clip->path == NULL) {
+	cairo_clip_t *clip_copy = _cairo_clip_copy (composite->clip);
+	cairo_clip_t *clip =
+		_cairo_clip_intersect_rectilinear_path (clip_copy,
+							path,
+							fill_rule,
+							antialias);
+	if (clip->num_boxes)
+		status = _cairo_gl_msaa_compositor_fill_rectilinear (compositor,
+								     composite,
+								     path,
+								     fill_rule,
+								     tolerance,
+								     antialias,
+								     clip);
+	if (clip != clip_copy)
+	    _cairo_clip_destroy (clip);
+
+	if (clip_copy != composite->clip)
+	    _cairo_clip_destroy (clip_copy);
+
+	return status;
+    } else if (composite->clip != NULL &&
+	       composite->clip->num_boxes == 1 &&
+	       composite->clip->path == NULL) {
+	/* If clip a is rectangle, we know it is either a clip set by app
+	   or app does not set clip but is computed by cairo, we can
+	   avoid stencil if fill path is completely contained by clip. */
+	_cairo_path_fixed_fill_extents (path, fill_rule, tolerance,
+					&path_extents);
+
+	if (_cairo_rectangle_contains_rectangle (&composite->clip->extents,
+						 &path_extents))
+	    set_clip = FALSE;
+    }
+
     status = _cairo_gl_composite_init (&setup,
 				       composite->op,
 				       dst,
@@ -745,7 +836,8 @@ _cairo_gl_msaa_compositor_fill (const cairo_compositor_t	*compositor,
     if (unlikely (status))
 	goto cleanup_setup;
 
-    _cairo_gl_msaa_compositor_set_clip (composite, &setup);
+    if (set_clip)
+	_cairo_gl_msaa_compositor_set_clip (composite, &setup);
 
     status = _cairo_gl_composite_begin_multisample (&setup, &ctx,
 	antialias != CAIRO_ANTIALIAS_NONE);
