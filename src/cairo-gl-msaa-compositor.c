@@ -565,6 +565,10 @@ _prevent_overlapping_drawing (cairo_gl_context_t *ctx,
 	return CAIRO_INT_STATUS_SUCCESS;
 
    if (glIsEnabled (GL_STENCIL_TEST) == FALSE) {
+       /* In case we have pending operations we have to flush before
+	  adding the stencil buffer.*/
+       _cairo_gl_composite_flush (ctx);
+
 	/* Enable the stencil buffer, even if we are not using it for clipping,
 	   so we can use it below to prevent overlapping shapes. We initialize
 	   it all to one here which represents infinite clip. */

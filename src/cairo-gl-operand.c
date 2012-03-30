@@ -641,13 +641,15 @@ _cairo_gl_operand_bind_to_shader (cairo_gl_context_t *ctx,
     case CAIRO_GL_OPERAND_NONE:
         break;
     case CAIRO_GL_OPERAND_CONSTANT:
-        strcpy (custom_part, "_constant");
-	_cairo_gl_shader_bind_vec4 (ctx,
-                                    uniform_name,
-                                    operand->constant.color[0],
-                                    operand->constant.color[1],
-                                    operand->constant.color[2],
-                                    operand->constant.color[3]);
+        if (tex_unit != CAIRO_GL_TEX_SOURCE) {
+            strcpy (custom_part, "_constant");
+            _cairo_gl_shader_bind_vec4 (ctx,
+                                        uniform_name,
+                                        operand->constant.color[0],
+                                        operand->constant.color[1],
+                                        operand->constant.color[2],
+                                        operand->constant.color[3]);
+        }
         break;
     case CAIRO_GL_OPERAND_RADIAL_GRADIENT_NONE:
     case CAIRO_GL_OPERAND_RADIAL_GRADIENT_EXT:
@@ -699,7 +701,9 @@ _cairo_gl_operand_bind_to_shader (cairo_gl_context_t *ctx,
 cairo_bool_t
 _cairo_gl_operand_needs_setup (cairo_gl_operand_t *dest,
                                cairo_gl_operand_t *source,
-                               unsigned int        vertex_offset)
+                               unsigned int        vertex_offset,
+                               cairo_bool_t        *needs_flush,
+                               cairo_gl_tex_t      tex_unit)
 {
     if (dest->type != source->type)
         return TRUE;
@@ -708,12 +712,16 @@ _cairo_gl_operand_needs_setup (cairo_gl_operand_t *dest,
 
     switch (source->type) {
     case CAIRO_GL_OPERAND_NONE:
-        return FALSE;
     case CAIRO_GL_OPERAND_CONSTANT:
-        return dest->constant.color[0] != source->constant.color[0] ||
-               dest->constant.color[1] != source->constant.color[1] ||
-               dest->constant.color[2] != source->constant.color[2] ||
-               dest->constant.color[3] != source->constant.color[3];
+        if (tex_unit == CAIRO_GL_TEX_SOURCE) {
+            *needs_flush = FALSE;
+            return TRUE;
+        } else {
+            return dest->constant.color[0] != source->constant.color[0] ||
+                dest->constant.color[1] != source->constant.color[1] ||
+                dest->constant.color[2] != source->constant.color[2] ||
+                dest->constant.color[3] != source->constant.color[3];
+        }
     case CAIRO_GL_OPERAND_TEXTURE:
         return dest->texture.surface != source->texture.surface ||
                dest->texture.attributes.extend != source->texture.attributes.extend ||
@@ -734,15 +742,20 @@ _cairo_gl_operand_needs_setup (cairo_gl_operand_t *dest,
 }
 
 unsigned int
-_cairo_gl_operand_get_vertex_size (cairo_gl_operand_type_t type)
+_cairo_gl_operand_get_vertex_size (cairo_gl_operand_type_t type,
+                                   cairo_gl_tex_t tex_unit)
 {
     switch (type) {
     default:
     case CAIRO_GL_OPERAND_COUNT:
         ASSERT_NOT_REACHED;
     case CAIRO_GL_OPERAND_NONE:
-    case CAIRO_GL_OPERAND_CONSTANT:
         return 0;
+    case CAIRO_GL_OPERAND_CONSTANT:
+        if (tex_unit == CAIRO_GL_TEX_SOURCE)
+            return 4 * sizeof (GLfloat);
+        else
+            return 0;
     case CAIRO_GL_OPERAND_TEXTURE:
     case CAIRO_GL_OPERAND_LINEAR_GRADIENT:
     case CAIRO_GL_OPERAND_RADIAL_GRADIENT_A0:
@@ -754,6 +767,7 @@ _cairo_gl_operand_get_vertex_size (cairo_gl_operand_type_t type)
 
 void
 _cairo_gl_operand_emit (cairo_gl_operand_t *operand,
+                        cairo_gl_tex_t tex_unit,
                         GLfloat ** vb,
                         GLfloat x,
                         GLfloat y)
@@ -763,7 +777,14 @@ _cairo_gl_operand_emit (cairo_gl_operand_t *operand,
     case CAIRO_GL_OPERAND_COUNT:
         ASSERT_NOT_REACHED;
     case CAIRO_GL_OPERAND_NONE:
+        break;
     case CAIRO_GL_OPERAND_CONSTANT:
+        if (tex_unit == CAIRO_GL_TEX_SOURCE) {
+            *(*vb)++ = operand->constant.color[0];
+            *(*vb)++ = operand->constant.color[1];
+            *(*vb)++ = operand->constant.color[2];
+            *(*vb)++ = operand->constant.color[3];
+        }
         break;
     case CAIRO_GL_OPERAND_LINEAR_GRADIENT:
     case CAIRO_GL_OPERAND_RADIAL_GRADIENT_A0:

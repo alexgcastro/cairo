@@ -213,15 +213,18 @@ _cairo_gl_context_setup_operand (cairo_gl_context_t *ctx,
 {
     cairo_gl_dispatch_t *dispatch = &ctx->dispatch;
     cairo_bool_t needs_setup;
+    cairo_bool_t needs_flush = TRUE;
 
     /* XXX: we need to do setup when switching from shaders
      * to no shaders (or back) */
     needs_setup = ctx->vertex_size != vertex_size;
     needs_setup |= _cairo_gl_operand_needs_setup (&ctx->operands[tex_unit],
                                                  operand,
-                                                 vertex_offset);
+                                                 vertex_offset,
+                                                 &needs_flush,
+                                                 tex_unit);
 
-    if (needs_setup) {
+    if (needs_setup && needs_flush) {
         _cairo_gl_composite_flush (ctx);
         _cairo_gl_context_destroy_operand (ctx, tex_unit);
     }
@@ -240,6 +243,12 @@ _cairo_gl_context_setup_operand (cairo_gl_context_t *ctx,
         break;
         /* fall through */
     case CAIRO_GL_OPERAND_CONSTANT:
+        if (tex_unit == CAIRO_GL_TEX_SOURCE) {
+            dispatch->VertexAttribPointer (CAIRO_GL_COLOR_ATTRIB_INDEX, 4,
+                                           GL_FLOAT, GL_FALSE, vertex_size,
+                                           (void *) (uintptr_t) vertex_offset);
+            dispatch->EnableVertexAttribArray (CAIRO_GL_COLOR_ATTRIB_INDEX);
+        }
         break;
     case CAIRO_GL_OPERAND_TEXTURE:
         if (ctx->states_cache.active_texture != GL_TEXTURE0 + tex_unit) {
@@ -308,6 +317,8 @@ _cairo_gl_context_destroy_operand (cairo_gl_context_t *ctx,
         break;
         /* fall through */
     case CAIRO_GL_OPERAND_CONSTANT:
+        if (tex_unit == CAIRO_GL_TEX_SOURCE)
+            ctx->dispatch.DisableVertexAttribArray (CAIRO_GL_COLOR_ATTRIB_INDEX);
         break;
     case CAIRO_GL_OPERAND_TEXTURE:
         dispatch->DisableVertexAttribArray (CAIRO_GL_TEXCOORD0_ATTRIB_INDEX + tex_unit);
@@ -719,8 +730,8 @@ _cairo_gl_composite_begin_multisample (cairo_gl_composite_t *setup,
     status = CAIRO_STATUS_SUCCESS;
 
     dst_size  = 2 * sizeof (GLfloat);
-    src_size  = _cairo_gl_operand_get_vertex_size (setup->src.type);
-    mask_size = _cairo_gl_operand_get_vertex_size (setup->mask.type);
+    src_size  = _cairo_gl_operand_get_vertex_size (setup->src.type, CAIRO_GL_TEX_SOURCE);
+    mask_size = _cairo_gl_operand_get_vertex_size (setup->mask.type, CAIRO_GL_TEX_MASK);
     vertex_size = dst_size + src_size + mask_size;
 
     if (setup->spans)
@@ -733,8 +744,9 @@ _cairo_gl_composite_begin_multisample (cairo_gl_composite_t *setup,
     if (setup->spans)
 	_cairo_gl_context_setup_spans (ctx, vertex_size, dst_size + src_size + mask_size);
     else {
-	ctx->dispatch.DisableVertexAttribArray (CAIRO_GL_COLOR_ATTRIB_INDEX);
-	ctx->spans = FALSE;
+        if (setup->src.type != CAIRO_GL_OPERAND_CONSTANT)
+            ctx->dispatch.DisableVertexAttribArray (CAIRO_GL_COLOR_ATTRIB_INDEX);
+        ctx->spans = FALSE;
     }
 
     /* XXX: Shoot me - we have converted CLEAR to DEST_OUT,
@@ -915,8 +927,8 @@ _cairo_gl_composite_emit_vertex (cairo_gl_context_t *ctx,
     *vb++ = x;
     *vb++ = y;
 
-    _cairo_gl_operand_emit (&ctx->operands[CAIRO_GL_TEX_SOURCE], &vb, x, y);
-    _cairo_gl_operand_emit (&ctx->operands[CAIRO_GL_TEX_MASK  ], &vb, x, y);
+    _cairo_gl_operand_emit (&ctx->operands[CAIRO_GL_TEX_SOURCE], CAIRO_GL_TEX_SOURCE, &vb, x, y);
+    _cairo_gl_operand_emit (&ctx->operands[CAIRO_GL_TEX_MASK  ], CAIRO_GL_TEX_MASK, &vb, x, y);
 
     if (ctx->spans) {
 	union fi {
@@ -977,7 +989,7 @@ _cairo_gl_composite_emit_glyph_vertex (cairo_gl_context_t *ctx,
     *vb++ = x;
     *vb++ = y;
 
-    _cairo_gl_operand_emit (&ctx->operands[CAIRO_GL_TEX_SOURCE], &vb, x, y);
+    _cairo_gl_operand_emit (&ctx->operands[CAIRO_GL_TEX_SOURCE], CAIRO_GL_TEX_SOURCE, &vb, x, y);
 
     *vb++ = glyph_x;
     *vb++ = glyph_y;

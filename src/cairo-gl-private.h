@@ -213,6 +213,7 @@ typedef enum cairo_gl_shader_in {
 
 typedef enum cairo_gl_var_type {
   CAIRO_GL_VAR_NONE,
+  CAIRO_GL_VAR_COLOR,
   CAIRO_GL_VAR_TEXCOORDS,
 } cairo_gl_var_type_t;
 
@@ -728,12 +729,15 @@ cairo_private cairo_extend_t
 _cairo_gl_operand_get_extend (cairo_gl_operand_t *operand);
 
 cairo_private unsigned int
-_cairo_gl_operand_get_vertex_size (cairo_gl_operand_type_t type);
+_cairo_gl_operand_get_vertex_size (cairo_gl_operand_type_t type,
+                                   cairo_gl_tex_t tex_unit);
 
 cairo_private cairo_bool_t
 _cairo_gl_operand_needs_setup (cairo_gl_operand_t *dest,
                                cairo_gl_operand_t *source,
-                               unsigned int        vertex_offset);
+                               unsigned int        vertex_offset,
+                               cairo_bool_t        *needs_flush,
+                               cairo_gl_tex_t      tex_unit);
 
 cairo_private void
 _cairo_gl_operand_bind_to_shader (cairo_gl_context_t *ctx,
@@ -742,6 +746,7 @@ _cairo_gl_operand_bind_to_shader (cairo_gl_context_t *ctx,
 
 cairo_private void
 _cairo_gl_operand_emit (cairo_gl_operand_t *operand,
+                        cairo_gl_tex_t tex_unit,
                         GLfloat ** vb,
                         GLfloat x,
                         GLfloat y);

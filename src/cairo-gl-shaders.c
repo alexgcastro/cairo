@@ -598,15 +598,20 @@ _cairo_gl_shader_fini (cairo_gl_context_t *ctx,
 static const char *operand_names[] = { "source", "mask", "dest" };
 
 static cairo_gl_var_type_t
-cairo_gl_operand_get_var_type (cairo_gl_operand_type_t type)
+cairo_gl_operand_get_var_type (cairo_gl_operand_type_t type,
+                               cairo_gl_tex_t name)
 {
     switch (type) {
     default:
     case CAIRO_GL_OPERAND_COUNT:
         ASSERT_NOT_REACHED;
     case CAIRO_GL_OPERAND_NONE:
-    case CAIRO_GL_OPERAND_CONSTANT:
         return CAIRO_GL_VAR_NONE;
+    case CAIRO_GL_OPERAND_CONSTANT:
+        if (name == CAIRO_GL_TEX_SOURCE)
+            return CAIRO_GL_VAR_COLOR;
+        else
+            return CAIRO_GL_VAR_NONE;
     case CAIRO_GL_OPERAND_LINEAR_GRADIENT:
     case CAIRO_GL_OPERAND_RADIAL_GRADIENT_A0:
     case CAIRO_GL_OPERAND_RADIAL_GRADIENT_NONE:
@@ -626,6 +631,11 @@ cairo_gl_shader_emit_variable (cairo_output_stream_t *stream,
         ASSERT_NOT_REACHED;
     case CAIRO_GL_VAR_NONE:
         break;
+    case CAIRO_GL_VAR_COLOR:
+        if (name == CAIRO_GL_TEX_SOURCE)
+            _cairo_output_stream_printf (stream,
+                                         "varying vec4 fragment_color;\n");
+        break;
     case CAIRO_GL_VAR_TEXCOORDS:
         _cairo_output_stream_printf (stream,
                                      "varying vec2 %s_texcoords;\n",
@@ -643,6 +653,11 @@ cairo_gl_shader_emit_vertex (cairo_output_stream_t *stream,
     default:
         ASSERT_NOT_REACHED;
     case CAIRO_GL_VAR_NONE:
+        break;
+    case CAIRO_GL_VAR_COLOR:
+        if (name == CAIRO_GL_TEX_SOURCE)
+            _cairo_output_stream_printf (stream,
+                                         "    fragment_color = Color;\n");
         break;
     case CAIRO_GL_VAR_TEXCOORDS:
         _cairo_output_stream_printf (stream,
@@ -746,13 +761,27 @@ cairo_gl_shader_emit_color (cairo_output_stream_t *stream,
             namestr);
         break;
     case CAIRO_GL_OPERAND_CONSTANT:
-        _cairo_output_stream_printf (stream, 
-            "uniform vec4 %s_constant;\n"
-            "vec4 get_%s()\n"
-            "{\n"
-            "    return %s_constant;\n"
-            "}\n",
-            namestr, namestr, namestr);
+        switch (name) {
+        case CAIRO_GL_TEX_SOURCE:
+            _cairo_output_stream_printf (stream,
+                                         "varying vec4 fragment_color;\n"
+                                         "vec4 get_%s()\n"
+                                         "{\n"
+                                         "    return fragment_color;\n"
+                                         "}\n",
+                                         namestr);
+            break;
+        case CAIRO_GL_TEX_MASK:
+        case CAIRO_GL_TEX_TEMP:
+            _cairo_output_stream_printf (stream,
+                                         "uniform vec4 %s_constant;\n"
+                                         "vec4 get_%s()\n"
+                                         "{\n"
+                                         "    return %s_constant;\n"
+                                         "}\n",
+                                         namestr, namestr, namestr);
+
+        }
         break;
     case CAIRO_GL_OPERAND_TEXTURE:
 	_cairo_output_stream_printf (stream,
@@ -1245,8 +1274,8 @@ _cairo_gl_get_shader_by_type (cairo_gl_context_t *ctx,
     _cairo_gl_shader_init (&entry->shader);
     status = _cairo_gl_shader_compile (ctx,
 				       &entry->shader,
-				       cairo_gl_operand_get_var_type (source->type),
-				       cairo_gl_operand_get_var_type (mask->type),
+				       cairo_gl_operand_get_var_type (source->type, CAIRO_GL_TEX_SOURCE),
+				       cairo_gl_operand_get_var_type (mask->type, CAIRO_GL_TEX_MASK),
 				       use_coverage,
 				       fs_source);
     free (fs_source);
