@@ -51,6 +51,7 @@
 #include "cairo-surface-backend-private.h"
 #include "cairo-surface-offset-private.h"
 #include "cairo-surface-subsurface-private.h"
+#include "cairo-surface-snapshot-private.h"
 
 static cairo_int_status_t
 _cairo_gl_create_gradient_texture (cairo_gl_surface_t *dst,
@@ -252,6 +253,8 @@ _cairo_gl_surface_operand_init (cairo_gl_operand_t *operand,
     cairo_gl_surface_t *surface;
     cairo_surface_attributes_t *attributes;
     cairo_int_status_t status;
+    cairo_surface_snapshot_t *surface_snapshot;
+    cairo_pattern_t *sub_pattern;
 
     surface = (cairo_gl_surface_t *) src->surface;
     if (surface->base.type != CAIRO_SURFACE_TYPE_GL)
@@ -261,8 +264,25 @@ _cairo_gl_surface_operand_init (cairo_gl_operand_t *operand,
 	if (_cairo_surface_is_subsurface (&surface->base))
 	    return _cairo_gl_subsurface_operand_init (operand, _src, dst,
 						      sample, extents);
+	else if (_cairo_surface_is_snapshot (src->surface)) {
+	    surface_snapshot = (cairo_surface_snapshot_t *)src->surface;
+	    surface = (cairo_gl_surface_t *)surface_snapshot->target;
+	    if (surface->base.type != CAIRO_SURFACE_TYPE_GL)
+	        return CAIRO_INT_STATUS_UNSUPPORTED;
 
-	return CAIRO_INT_STATUS_UNSUPPORTED;
+	    if (_cairo_surface_is_subsurface (&surface->base)) {
+		sub_pattern = cairo_pattern_create_for_surface (&surface->base);
+		status = _cairo_gl_subsurface_operand_init (operand,
+							    sub_pattern,
+							    dst,
+							    sample,
+							    extents);
+		cairo_pattern_destroy (sub_pattern);
+		return status;
+	    }
+	}
+	else
+	    return CAIRO_INT_STATUS_UNSUPPORTED;
     }
 
     if (surface->base.device && surface->base.device != dst->base.device)

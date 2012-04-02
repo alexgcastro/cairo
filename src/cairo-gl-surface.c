@@ -851,10 +851,6 @@ _cairo_gl_surface_draw_image (cairo_gl_surface_t *dst,
 
     cpp = PIXMAN_FORMAT_BPP (src->pixman_format) / 8;
 
-    status = _cairo_gl_surface_flush (&dst->base);
-    if (unlikely (status))
-	goto FAIL;
-
     if (_cairo_gl_surface_is_texture (dst)) {
 	void *data_start = src->data + src_y * src->stride + src_x * cpp;
 	void *data_start_gles2 = NULL;

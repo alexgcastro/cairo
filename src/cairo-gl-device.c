@@ -358,9 +358,6 @@ static void
 _cairo_gl_ensure_msaa_gles_framebuffer (cairo_gl_context_t *ctx,
 					cairo_gl_surface_t *surface)
 {
-    if (likely (surface->fb))
-        return;
-
     ctx->dispatch.FramebufferTexture2DMultisample(GL_FRAMEBUFFER,
 						  GL_COLOR_ATTACHMENT0,
 						  ctx->tex_target,
@@ -722,8 +719,11 @@ _cairo_gl_context_set_destination (cairo_gl_context_t *ctx,
                                    cairo_gl_surface_t *surface,
                                    cairo_bool_t multisampling)
 {
-    if (ctx->current_target == surface && ! surface->needs_update &&
-	surface->msaa_active == multisampling)
+    if (ctx->current_target == surface && ! surface->needs_update
+#if CAIRO_HAS_GL_SURFACE
+		&& surface->msaa_active == multisampling
+#endif
+)
 	return;
 
     _cairo_gl_composite_flush (ctx);
