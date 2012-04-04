@@ -649,7 +649,7 @@ _cairo_gl_composite_setup_clipping (cairo_gl_composite_t *setup,
 
     assert (!setup->clip_region || !setup->clip);
 
-    if (! same_clip && setup->clip) {
+    if (! same_clip) {
 	_cairo_clip_destroy (ctx->clip);
 	ctx->clip = _cairo_clip_copy (setup->clip);
     }
