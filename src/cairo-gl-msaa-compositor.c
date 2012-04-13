@@ -638,7 +638,7 @@ should_fall_back (cairo_gl_surface_t *surface,
     /* Multisampling OpenGL ES surfaces only maintain one multisampling
        framebuffer and thus must use the spans compositor to do non
        AA rendering */
-    if (((cairo_gl_context_t *) &surface->base.device)->gl_flavor == CAIRO_GL_FLAVOR_ES
+    if (((cairo_gl_context_t *) surface->base.device)->gl_flavor == CAIRO_GL_FLAVOR_ES
 	 && surface->supports_msaa
 	 && antialias == CAIRO_ANTIALIAS_NONE)
 	return TRUE;
