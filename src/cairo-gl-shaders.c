@@ -1027,7 +1027,8 @@ cairo_gl_shader_get_fragment_source (cairo_gl_context_t *ctx,
 	    _cairo_gl_shader_emit_border_fade (stream, mask, CAIRO_GL_TEX_MASK);
     }
 
-    cairo_gl_shader_emit_color (stream, ctx, src, CAIRO_GL_TEX_SOURCE);
+    cairo_gl_shader_emit_color (stream, ctx, src,
+                                ctx->color_attribute ? CAIRO_GL_TEX_SOURCE : CAIRO_GL_TEX_TEMP);
     cairo_gl_shader_emit_color (stream, ctx, mask, CAIRO_GL_TEX_MASK);
 
     coverage_str = "";
@@ -1274,7 +1275,8 @@ _cairo_gl_get_shader_by_type (cairo_gl_context_t *ctx,
     _cairo_gl_shader_init (&entry->shader);
     status = _cairo_gl_shader_compile (ctx,
 				       &entry->shader,
-				       cairo_gl_operand_get_var_type (source->type, CAIRO_GL_TEX_SOURCE),
+				       cairo_gl_operand_get_var_type (source->type,
+                                                      ctx->color_attribute ? CAIRO_GL_TEX_SOURCE : CAIRO_GL_TEX_TEMP),
 				       cairo_gl_operand_get_var_type (mask->type, CAIRO_GL_TEX_MASK),
 				       use_coverage,
 				       fs_source);

@@ -142,7 +142,8 @@ _cairo_gl_composite_bind_to_shader (cairo_gl_context_t   *ctx,
 {
     _cairo_gl_shader_bind_matrix4f(ctx, "ModelViewProjectionMatrix",
 				   ctx->modelviewprojection_matrix);
-    _cairo_gl_operand_bind_to_shader (ctx, &setup->src,  CAIRO_GL_TEX_SOURCE);
+    _cairo_gl_operand_bind_to_shader (ctx, &setup->src,
+                                      ctx->color_attribute ? CAIRO_GL_TEX_SOURCE : CAIRO_GL_TEX_TEMP);
     _cairo_gl_operand_bind_to_shader (ctx, &setup->mask, CAIRO_GL_TEX_MASK);
 }
 
@@ -222,7 +223,7 @@ _cairo_gl_context_setup_operand (cairo_gl_context_t *ctx,
                                                  operand,
                                                  vertex_offset,
                                                  &needs_flush,
-                                                 tex_unit);
+                                                 ctx->color_attribute ? tex_unit : CAIRO_GL_TEX_TEMP);
 
     if (needs_setup && needs_flush) {
         _cairo_gl_composite_flush (ctx);
@@ -243,7 +244,7 @@ _cairo_gl_context_setup_operand (cairo_gl_context_t *ctx,
         break;
         /* fall through */
     case CAIRO_GL_OPERAND_CONSTANT:
-        if (tex_unit == CAIRO_GL_TEX_SOURCE) {
+        if (ctx->color_attribute && tex_unit == CAIRO_GL_TEX_SOURCE) {
             dispatch->VertexAttribPointer (CAIRO_GL_COLOR_ATTRIB_INDEX, 4,
                                            GL_FLOAT, GL_FALSE, vertex_size,
                                            (void *) (uintptr_t) vertex_offset);
@@ -317,7 +318,7 @@ _cairo_gl_context_destroy_operand (cairo_gl_context_t *ctx,
         break;
         /* fall through */
     case CAIRO_GL_OPERAND_CONSTANT:
-        if (tex_unit == CAIRO_GL_TEX_SOURCE)
+        if (ctx->color_attribute && tex_unit == CAIRO_GL_TEX_SOURCE)
             ctx->dispatch.DisableVertexAttribArray (CAIRO_GL_COLOR_ATTRIB_INDEX);
         break;
     case CAIRO_GL_OPERAND_TEXTURE:
@@ -689,6 +690,8 @@ _cairo_gl_composite_begin_multisample (cairo_gl_composite_t *setup,
     if (unlikely (status))
 	return status;
 
+    ctx->color_attribute = TRUE;
+
     _cairo_gl_context_set_destination (ctx, setup->dst, multisampling);
 
     if (ctx->states_cache.blend_enabled == FALSE) {
@@ -730,7 +733,8 @@ _cairo_gl_composite_begin_multisample (cairo_gl_composite_t *setup,
     status = CAIRO_STATUS_SUCCESS;
 
     dst_size  = 2 * sizeof (GLfloat);
-    src_size  = _cairo_gl_operand_get_vertex_size (setup->src.type, CAIRO_GL_TEX_SOURCE);
+    src_size  = _cairo_gl_operand_get_vertex_size (setup->src.type,
+                                                   ctx->color_attribute ? CAIRO_GL_TEX_SOURCE : CAIRO_GL_TEX_TEMP);
     mask_size = _cairo_gl_operand_get_vertex_size (setup->mask.type, CAIRO_GL_TEX_MASK);
     vertex_size = dst_size + src_size + mask_size;
 
@@ -744,7 +748,7 @@ _cairo_gl_composite_begin_multisample (cairo_gl_composite_t *setup,
     if (setup->spans)
 	_cairo_gl_context_setup_spans (ctx, vertex_size, dst_size + src_size + mask_size);
     else {
-        if (setup->src.type != CAIRO_GL_OPERAND_CONSTANT)
+        if (!ctx->color_attribute || setup->src.type != CAIRO_GL_OPERAND_CONSTANT)
             ctx->dispatch.DisableVertexAttribArray (CAIRO_GL_COLOR_ATTRIB_INDEX);
         ctx->spans = FALSE;
     }
@@ -927,7 +931,9 @@ _cairo_gl_composite_emit_vertex (cairo_gl_context_t *ctx,
     *vb++ = x;
     *vb++ = y;
 
-    _cairo_gl_operand_emit (&ctx->operands[CAIRO_GL_TEX_SOURCE], CAIRO_GL_TEX_SOURCE, &vb, x, y);
+    _cairo_gl_operand_emit (&ctx->operands[CAIRO_GL_TEX_SOURCE],
+                            ctx->color_attribute ? CAIRO_GL_TEX_SOURCE : CAIRO_GL_TEX_TEMP,
+                            &vb, x, y);
     _cairo_gl_operand_emit (&ctx->operands[CAIRO_GL_TEX_MASK  ], CAIRO_GL_TEX_MASK, &vb, x, y);
 
     if (ctx->spans) {
@@ -989,7 +995,9 @@ _cairo_gl_composite_emit_glyph_vertex (cairo_gl_context_t *ctx,
     *vb++ = x;
     *vb++ = y;
 
-    _cairo_gl_operand_emit (&ctx->operands[CAIRO_GL_TEX_SOURCE], CAIRO_GL_TEX_SOURCE, &vb, x, y);
+    _cairo_gl_operand_emit (&ctx->operands[CAIRO_GL_TEX_SOURCE],
+                            ctx->color_attribute ? CAIRO_GL_TEX_SOURCE : CAIRO_GL_TEX_TEMP,
+                            &vb, x, y);
 
     *vb++ = glyph_x;
     *vb++ = glyph_y;

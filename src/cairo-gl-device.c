@@ -198,6 +198,7 @@ _cairo_gl_context_init (cairo_gl_context_t *ctx)
 
 
     ctx->thread_aware = TRUE;
+    ctx->color_attribute = FALSE;
 
     memset (ctx->glyph_cache, 0, sizeof (ctx->glyph_cache));
     cairo_list_init (&ctx->fonts);

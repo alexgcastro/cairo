@@ -372,6 +372,8 @@ struct _cairo_gl_context {
 
     cairo_bool_t thread_aware;
 
+    cairo_bool_t color_attribute;
+
     /* GL stencil and depth buffers are shared among all surfaces
        to preserve memory. In the future this could be a pool of renderbuffers
        with an eviction policy. */
